@@ -32,7 +32,7 @@ class Magazine:
     torp_thrust_g: float = 15.0
     torp_fuel_s: float = 180.0
     torp_warhead: float = 400.0
-    torp_prox_m: float = 50.0
+    torp_prox_m: float = 100.0
     torp_mass: float = 500.0
 
     def ready_tube_index(self) -> int | None:
@@ -61,8 +61,9 @@ class Torpedo:
     max_rot_rate: float = 3.0
     max_rot_accel: float = 6.0
     warhead_yield: float = 400.0
-    prox_fuse_radius: float = 50.0
+    prox_fuse_radius: float = 100.0
     target_track_id: int | None = None
+    target_entity_id: int | None = None
     spawn_time: float = 0.0
     lifetime_s: float = 600.0
     alive: bool = True

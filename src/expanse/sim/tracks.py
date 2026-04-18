@@ -42,30 +42,36 @@ class ContactTrack:
     def age(self, now: float) -> float:
         return now - self.last_seen_time
 
-    def intercept_point(self, shooter_pos: Vec2, projectile_speed: float) -> Vec2:
-        """Solve for predicted intercept assuming constant-velocity target (ignores est_accel)."""
-        rel = Vec2(self.last_seen_pos.x - shooter_pos.x, self.last_seen_pos.y - shooter_pos.y)
-        v = self.last_seen_vel
+    def intercept_point(self, shooter_pos: Vec2, projectile_speed: float, age: float = 0.0) -> Vec2:
+        """Solve for predicted intercept assuming constant-velocity target.
+
+        `age` is the time since `last_seen_time`; the target's state is advanced
+        forward by `age` before solving so the shooter aims from where the target
+        is *now*, not from where it was last observed. est_accel is used for
+        this advance (not for the solver itself, which stays linear).
+        """
+        start_pos = self.predict_pos(age) if age > 0.0 else self.last_seen_pos
+        v = self.predict_vel(age) if age > 0.0 else self.last_seen_vel
+        rel = Vec2(start_pos.x - shooter_pos.x, start_pos.y - shooter_pos.y)
         a = v.x * v.x + v.y * v.y - projectile_speed * projectile_speed
         b = 2.0 * (rel.x * v.x + rel.y * v.y)
         c = rel.x * rel.x + rel.y * rel.y
-        # Solve a*t^2 + b*t + c = 0 for smallest positive t
         if abs(a) < 1e-9:
             if abs(b) < 1e-9:
-                return self.last_seen_pos
+                return start_pos
             t = -c / b
         else:
             disc = b * b - 4 * a * c
             if disc < 0:
-                return self.last_seen_pos
+                return start_pos
             sq = disc ** 0.5
             t1 = (-b - sq) / (2 * a)
             t2 = (-b + sq) / (2 * a)
             candidates = [t for t in (t1, t2) if t > 0]
             if not candidates:
-                return self.last_seen_pos
+                return start_pos
             t = min(candidates)
-        return self.predict_pos(t)
+        return self.predict_pos(age + t)
 
 
 class TrackTable:

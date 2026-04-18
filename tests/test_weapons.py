@@ -75,6 +75,44 @@ def test_torpedo_hits_stationary_target():
     assert enemy.destroyed, "torpedo should reach and destroy a 20 km stationary target"
 
 
+def test_torpedo_hits_accelerating_target_at_long_range():
+    """Regression: with a 2 g burning target at 600 km, the guidance solver must
+    produce a valid intercept. Previously `v_mag` (the torpedo's instantaneous
+    speed) was used as projectile speed, which made `dt_est` blow up at launch
+    and the predicted aim point diverge under est_accel noise."""
+    w = World(seed=7)
+    shooter = _mk_ship(
+        1, Side.PLAYER,
+        pos=Vec2(0.0, 0.0),
+        magazine=Magazine(torpedoes_remaining=1),
+    )
+    # Target 600 km away, burning toward shooter at 2 g. Its signature will be
+    # huge so the sensor sees it every tick.
+    target = _mk_ship(
+        2, Side.HOSTILE,
+        pos=Vec2(600_000.0, 0.0),
+        vel=Vec2(-1000.0, 0.0),
+        heading=pi,
+        hull_hp=100.0,
+    )
+    target.cmd_thrust_g = 2.0
+    target.cmd_heading = pi
+    w.add_ship(shooter)
+    w.add_ship(target)
+    # Seed an initial track so fire_torpedo has something to aim at.
+    w.track_tables[Side.PLAYER].update_from_detection(
+        target.id, target.pos, target.vel, w.now_sim, Classification.SHIP,
+    )
+    track = w.track_tables[Side.PLAYER].get_by_entity(target.id)
+    w.fire_torpedo(shooter, target_track_id=track.track_id)
+    # 180 s fuel; hit should come well inside that at 600 km closing at >3 km/s.
+    for _ in range(int(200 / 0.05)):
+        w.step(0.05)
+        if target.destroyed:
+            break
+    assert target.destroyed, "torpedo should hit a 2g-burning target at 600 km within its fuel life"
+
+
 def test_pdc_intercepts_close_torpedo():
     w = World(seed=42)
     shooter = _mk_ship(1, Side.HOSTILE, pos=Vec2(3_000.0, 0.0), magazine=Magazine(torpedoes_remaining=1))

@@ -271,15 +271,20 @@ Because this is the most cross-cutting flow in the codebase:
 3. **`World.fire_torpedo`** creates a `Torpedo`, debits the magazine,
    sets the chosen tube's cooldown, emits `TORPEDO_LAUNCHED`.
 4. **Each tick, `World._step_torpedoes`:**
-   - Looks up `track = self.track_tables[torp.side].get_by_track_id(torp.target_track_id)`.
-     **If the shooter's side loses the track, the torpedo flies blind.**
-     (A consequence of Rule 1; deliberate, and part of the feel.)
-   - Computes `torpedo_aim_heading(torp, track, now)` — lead-pursuit
-     using intercept-point plus an accel-based correction.
+   - Refreshes the torpedo's onboard seeker view of the target with
+     noise that scales with *torp-to-target* range — so a launched
+     torpedo resolves its prey more precisely than the launching ship
+     ever did. If the target entity is gone, falls back to the ship's
+     track table (and flies blind if that too is stale — a consequence
+     of Rule 1).
+   - Computes `torpedo_aim_heading(torp, view, now)` — proportional
+     navigation against the sensed target, `N = 4`.
    - Rate-limits the heading change by `torp.max_rot_rate`.
    - Burns fuel, integrates kinematics.
-   - Proximity fuse: if within `prox_fuse_radius` of an enemy ship,
-     detonate → `apply_damage` → emit `TORPEDO_DETONATED`.
+   - Proximity fuse: sweeps the line segments torp and ship traced
+     over the tick; if the minimum separation falls within
+     `prox_fuse_radius`, detonate → `apply_damage` → emit
+     `TORPEDO_DETONATED`.
 5. **Sensor tick** sees the hot torpedo as a `TORPEDO`-classified track
    on the other side's TrackTable → `TORPEDO_INBOUND` ("VAMPIRE") event.
 6. **PDC tick** on the defending ship picks the nearest hostile torpedo

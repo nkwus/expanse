@@ -4,7 +4,7 @@ from math import pi, atan2, cos, sin
 from .bodies import Ship, Side
 from .vec import Vec2
 from .integrator import step_kinematics
-from .tracks import TrackTable, Classification
+from .tracks import TrackTable, Classification, ContactTrack
 from .sensors import signature, detect_range, torpedo_signature
 from .events import Event, SimEvent
 from .weapons import Torpedo, PDCMode
@@ -34,6 +34,7 @@ class World:
         self.outcome: str | None = None  # 'win' | 'loss' | 'stalemate'
         self._stalemate_ballistic_since: float | None = None
         self._sides_seen: set[Side] = set()
+        self._torp_seekers: dict[int, ContactTrack] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -87,9 +88,11 @@ class World:
             warhead_yield=mag.torp_warhead,
             prox_fuse_radius=mag.torp_prox_m,
             target_track_id=track.track_id,
+            target_entity_id=track.entity_id,
             spawn_time=self.now_sim,
         )
         self.torpedoes.append(torp)
+        self._init_torp_seeker(torp, track)
         mag.torpedoes_remaining -= 1
         mag.tubes_cooldown_s[tube] = mag.reload_time_s
         self.emit(
@@ -156,6 +159,7 @@ class World:
             # Lifetime
             if self.now_sim - torp.spawn_time >= torp.lifetime_s:
                 torp.alive = False
+                self._torp_seekers.pop(torp.id, None)
                 self.emit(
                     SimEvent.TORPEDO_DETONATED,
                     f"torpedo #{torp.id} fuel/lifetime spent",
@@ -163,13 +167,17 @@ class World:
                 )
                 continue
 
-            # Aim at sensed track (from shooter's side)
-            table = self.track_tables[torp.side]
-            track = table.get_by_track_id(torp.target_track_id) if torp.target_track_id else None
-            if track is not None:
+            # Aim at the torp's onboard-seeker view (preferred — gets more
+            # accurate as the torp closes) and fall back to the ship's track
+            # table if the target entity is gone.
+            view = self._update_torp_seeker(torp)
+            if view is None:
+                table = self.track_tables[torp.side]
+                view = table.get_by_track_id(torp.target_track_id) if torp.target_track_id else None
+            if view is not None:
                 torp.heading = _slew_heading_simple(
                     torp.heading,
-                    torpedo_aim_heading(torp, track, self.now_sim),
+                    torpedo_aim_heading(torp, view, self.now_sim),
                     torp.max_rot_rate, dt,
                 )
 
@@ -180,14 +188,19 @@ class World:
                 accel = Vec2.from_angle(torp.heading, thrust_a)
             else:
                 accel = Vec2(0.0, 0.0)
+            pre_pos = torp.pos
             torp.pos, torp.vel = step_kinematics(torp.pos, torp.vel, accel, dt)
 
-            # Proximity fuse against enemy ships (ground truth — contact fuse is physical)
+            # Proximity fuse with swept check. A torp closing at >10 km/s covers
+            # much more than prox_fuse_radius per tick, so endpoint-only sampling
+            # aliases through the target. We check the minimum distance between
+            # the torp's and ship's linear paths over this tick instead.
             fused = False
             for ship in self.ships:
                 if ship.destroyed or ship.side == torp.side:
                     continue
-                d = (Vec2(ship.pos.x - torp.pos.x, ship.pos.y - torp.pos.y)).length()
+                ship_pre = Vec2(ship.pos.x - ship.vel.x * dt, ship.pos.y - ship.vel.y * dt)
+                d = _min_swept_distance(pre_pos, torp.pos, ship_pre, ship.pos)
                 if d <= torp.prox_fuse_radius:
                     self.emit(
                         SimEvent.TORPEDO_DETONATED,
@@ -199,9 +212,95 @@ class World:
                     fused = True
                     break
             if fused:
+                self._torp_seekers.pop(torp.id, None)
                 continue
             still_alive.append(torp)
+        # Drop seekers for torps removed this tick (expired / detonated above).
+        active_ids = {t.id for t in still_alive}
+        for tid in list(self._torp_seekers.keys()):
+            if tid not in active_ids:
+                self._torp_seekers.pop(tid, None)
         self.torpedoes = still_alive
+
+    # ------------------------------------------------------------------
+    # Torpedo onboard seeker
+    # ------------------------------------------------------------------
+    # The torp's own IR seeker is dedicated to one target and sits closer
+    # to it than the launching ship, so its positional noise scales with
+    # the *torp-to-target* range rather than ship-to-target. At terminal
+    # distance the noise drops well below the prox-fuse radius and lets
+    # PN converge on a maneuvering target.
+    TORP_SEEKER_POS_SCALE = 0.001
+    TORP_SEEKER_POS_FLOOR = 5.0
+    TORP_SEEKER_VEL_NOISE = 0.5
+    TORP_SEEKER_ACCEL_ALPHA = 0.3
+
+    def _init_torp_seeker(self, torp: Torpedo, seed_track: ContactTrack) -> None:
+        """Initialize the torp's seeker from the launching ship's track."""
+        self._torp_seekers[torp.id] = ContactTrack(
+            track_id=-torp.id,
+            entity_id=seed_track.entity_id,
+            last_seen_pos=seed_track.last_seen_pos,
+            last_seen_vel=seed_track.last_seen_vel,
+            est_accel=seed_track.est_accel,
+            last_seen_time=self.now_sim,
+            first_seen_time=self.now_sim,
+            confidence=1.0,
+            classification=seed_track.classification,
+        )
+
+    def _update_torp_seeker(self, torp: Torpedo) -> ContactTrack | None:
+        """Update the torp's seeker with a fresh noisy sample of the target.
+
+        Returns the view object for guidance, or None if the target is gone
+        (in which case the caller falls back to the ship's track table).
+        """
+        view = self._torp_seekers.get(torp.id)
+        if torp.target_entity_id is None:
+            return view
+        target = None
+        for s in self.ships:
+            if s.id == torp.target_entity_id and not s.destroyed:
+                target = s
+                break
+        if target is None:
+            return view  # keep coasting on last known
+        dx = target.pos.x - torp.pos.x
+        dy = target.pos.y - torp.pos.y
+        d = (dx * dx + dy * dy) ** 0.5
+        pos_sigma = max(self.TORP_SEEKER_POS_FLOOR, d * self.TORP_SEEKER_POS_SCALE)
+        vel_sigma = self.TORP_SEEKER_VEL_NOISE
+        sensed_pos = Vec2(
+            target.pos.x + self._rng.gauss(0.0, pos_sigma),
+            target.pos.y + self._rng.gauss(0.0, pos_sigma),
+        )
+        sensed_vel = Vec2(
+            target.vel.x + self._rng.gauss(0.0, vel_sigma),
+            target.vel.y + self._rng.gauss(0.0, vel_sigma),
+        )
+        if view is None:
+            view = ContactTrack(
+                track_id=-torp.id, entity_id=target.id,
+                last_seen_pos=sensed_pos, last_seen_vel=sensed_vel,
+                est_accel=Vec2(0.0, 0.0),
+                last_seen_time=self.now_sim, first_seen_time=self.now_sim,
+                confidence=1.0, classification=Classification.SHIP,
+            )
+            self._torp_seekers[torp.id] = view
+            return view
+        dt = self.now_sim - view.last_seen_time
+        if dt > 1e-6:
+            sampled_ax = (sensed_vel.x - view.last_seen_vel.x) / dt
+            sampled_ay = (sensed_vel.y - view.last_seen_vel.y) / dt
+            a = self.TORP_SEEKER_ACCEL_ALPHA
+            view.est_accel = Vec2(
+                view.est_accel.x * (1 - a) + sampled_ax * a,
+                view.est_accel.y * (1 - a) + sampled_ay * a,
+            )
+        view.last_seen_pos = sensed_pos
+        view.last_seen_vel = sensed_vel
+        view.last_seen_time = self.now_sim
+        return view
 
     # ------------------------------------------------------------------
     # Sensors
@@ -403,6 +502,31 @@ def _slew_heading_simple(heading: float, target: float, max_rate: float, dt: flo
         diff = -max_step
     h = heading + diff
     return (h + pi) % (2 * pi) - pi
+
+
+def _min_swept_distance(a_start: Vec2, a_end: Vec2, b_start: Vec2, b_end: Vec2) -> float:
+    """Minimum distance between two points moving linearly over t in [0, 1].
+
+    Reduces to: distance from origin to the segment of relative positions
+    r(t) = (a_start - b_start) + t · ((a_end - a_start) - (b_end - b_start)).
+    """
+    rs_x = a_start.x - b_start.x
+    rs_y = a_start.y - b_start.y
+    re_x = a_end.x - b_end.x
+    re_y = a_end.y - b_end.y
+    dx = re_x - rs_x
+    dy = re_y - rs_y
+    seg_sq = dx * dx + dy * dy
+    if seg_sq < 1e-9:
+        return (rs_x * rs_x + rs_y * rs_y) ** 0.5
+    t = -(rs_x * dx + rs_y * dy) / seg_sq
+    if t < 0.0:
+        t = 0.0
+    elif t > 1.0:
+        t = 1.0
+    cx = rs_x + t * dx
+    cy = rs_y + t * dy
+    return (cx * cx + cy * cy) ** 0.5
 
 
 def _compass_bearing_deg(a: Vec2, b: Vec2) -> float:

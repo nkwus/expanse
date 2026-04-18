@@ -1,0 +1,32 @@
+from __future__ import annotations
+
+G0 = 9.80665
+KM = 1000.0
+
+SIM_DT = 0.05
+MAX_TICKS_PER_FRAME = 2000
+
+WINDOW_W = 1600
+WINDOW_H = 900
+TARGET_FPS = 60
+
+MULTIPLIERS = (0.0, 1.0, 10.0, 100.0, 1000.0)
+
+RANGE_RINGS_M = (
+    1_000,
+    5_000,
+    10_000,
+    50_000,
+    100_000,
+    500_000,
+    1_000_000,
+    5_000_000,
+    10_000_000,
+)
+
+TOP_BAR_H = 32
+CMD_BAR_H = 32
+LEFT_PANEL_W = 260
+RIGHT_PANEL_W = 320
+
+DEFAULT_SCOPE_VIEW_M = 3_000_000.0

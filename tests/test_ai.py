@@ -3,9 +3,12 @@ from expanse.sim.bodies import Ship, Side
 from expanse.sim.vec import Vec2
 from expanse.sim.drive import EpsteinDrive
 from expanse.sim.ai import CorvetteAI
+from expanse.sim.ai_profile import load_profiles
 from expanse.sim.weapons import Magazine, PDC, PDCMode
 from expanse.sim.events import SimEvent
 from expanse.config import SIM_DT
+
+PROFILES = load_profiles()
 
 
 def test_hostile_ai_burns_on_detection():
@@ -29,7 +32,7 @@ def test_hostile_ai_burns_on_detection():
     )
     w.add_ship(player)
     w.add_ship(hostile)
-    ai = CorvetteAI(ship_id=hostile.id)
+    ai = CorvetteAI(ship_id=hostile.id, profile=PROFILES["default"])
     w.ais.append(ai)
     # Run until hostile transitions out of COAST (with a generous budget)
     for _ in range(int(60 / SIM_DT)):
@@ -62,7 +65,7 @@ def test_hostile_ai_fires_when_in_range():
     )
     w.add_ship(player)
     w.add_ship(hostile)
-    w.ais.append(CorvetteAI(ship_id=hostile.id))
+    w.ais.append(CorvetteAI(ship_id=hostile.id, profile=PROFILES["default"]))
     for _ in range(int(30 / SIM_DT)):
         w.step(SIM_DT)
         if any(e.kind == SimEvent.TORPEDO_LAUNCHED for e in w.events):

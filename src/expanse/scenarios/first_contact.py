@@ -7,6 +7,9 @@ from ..sim.vec import Vec2
 from ..sim.drive import EpsteinDrive
 from ..sim.weapons import Magazine, PDC, PDCMode
 from ..sim.ai import CorvetteAI
+from ..sim.ai_profile import load_profiles
+
+HOSTILE_PROFILE = "default"
 
 
 def _make_pdcs(base_id: int) -> list[PDC]:
@@ -52,5 +55,6 @@ def build() -> World:
         pdc_mode=PDCMode.AUTO_DEFEND,
     )
     world.add_ship(hostile)
-    world.ais.append(CorvetteAI(ship_id=hostile.id))
+    profiles = load_profiles()
+    world.ais.append(CorvetteAI(ship_id=hostile.id, profile=profiles[HOSTILE_PROFILE]))
     return world

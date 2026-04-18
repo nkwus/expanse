@@ -1,46 +1,37 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
-from math import atan2, pi
+from math import atan2
 
 from .bodies import Ship, Side
 from .vec import Vec2
-from .autopilot import MatchVelocity, Autopilot
+from .autopilot import MatchVelocity
 from .tracks import Classification
-from .weapons import PDCMode
+from .ai_profile import Profile
 
 
 class CorvetteAI:
-    """Scripted hostile captain.
+    """Scripted hostile captain. Behavior tunables come from a Profile."""
 
-    Phases:
-      COAST  - ballistic until it sees the player
-      BURN   - 2 g intercept burn toward last-known player position
-      FIGHT  - launch salvos when inside range, PDCs AUTO_DEFEND
-      RETREAT - hull below threshold -> flip-and-burn away from player
-    """
-
-    SALVO_RANGE_M = 600_000.0
-    SALVO_COUNT = 2
-    SALVO_COOLDOWN_S = 35.0
-    RETREAT_HULL_FRAC = 0.3
-    BURN_G = 2.0
-
-    def __init__(self, ship_id: int) -> None:
+    def __init__(self, ship_id: int, profile: Profile) -> None:
         self.ship_id = ship_id
+        self.profile = profile
         self.phase: str = "COAST"
         self._last_salvo_at: float = -1e9
         self._salvo_remaining: int = 0
         self._salvo_target_track: int | None = None
 
-    # ------------------------------------------------------------------
     def tick(self, world) -> None:
         ship = _find(world, self.ship_id)
         if ship is None or ship.destroyed:
             return
-        ship.pdc_mode = PDCMode.AUTO_DEFEND
+        ship.pdc_mode = self.profile.pdc_mode
 
-        # Retreat check
-        if self.phase != "RETREAT" and ship.hull_hp_max > 0 and ship.hull_hp / ship.hull_hp_max < self.RETREAT_HULL_FRAC:
+        retreat_frac = self.profile.retreat_hull_frac
+        if (
+            self.phase != "RETREAT"
+            and retreat_frac > 0.0
+            and ship.hull_hp_max > 0
+            and ship.hull_hp / ship.hull_hp_max < retreat_frac
+        ):
             self.phase = "RETREAT"
             self._enter_retreat(ship, world)
             return
@@ -59,41 +50,39 @@ class CorvetteAI:
                 return
             self._update_burn(ship, tgt)
             rng = _range_to(ship, tgt, world.now_sim)
-            if rng <= self.SALVO_RANGE_M:
+            if rng <= self.profile.salvo_range_m:
                 self.phase = "FIGHT"
-                self._salvo_remaining = self.SALVO_COUNT
+                self._salvo_remaining = self.profile.salvo_count
                 self._salvo_target_track = tgt.track_id
             return
 
         if self.phase == "FIGHT":
             if tgt is None:
-                self.phase = "BURN"  # lost contact — press the burn
+                self.phase = "BURN"
                 return
-            self._update_burn(ship, tgt)  # keep closing while in FIGHT
+            self._update_burn(ship, tgt)
             self._fire_salvos(ship, tgt, world)
             return
 
         if self.phase == "RETREAT":
-            # Autopilot set in _enter_retreat; nothing per-tick
             return
 
-    # ------------------------------------------------------------------
     def _enter_burn(self, ship: Ship, track) -> None:
         ship.autopilot = None
         ship.cmd_heading = _bearing_to(ship.pos, track.last_seen_pos)
-        ship.cmd_thrust_g = min(self.BURN_G, ship.drive.max_thrust_g, ship.crew_g_tolerance)
+        ship.cmd_thrust_g = min(self.profile.burn_g, ship.drive.max_thrust_g, ship.crew_g_tolerance)
 
     def _update_burn(self, ship: Ship, track) -> None:
         if ship.autopilot is not None:
-            return  # let standing orders run uninterrupted
+            return
         ship.cmd_heading = _bearing_to(ship.pos, track.last_seen_pos)
-        ship.cmd_thrust_g = min(self.BURN_G, ship.drive.max_thrust_g, ship.crew_g_tolerance)
+        ship.cmd_thrust_g = min(self.profile.burn_g, ship.drive.max_thrust_g, ship.crew_g_tolerance)
 
     def _fire_salvos(self, ship: Ship, track, world) -> None:
         now = world.now_sim
         if self._salvo_remaining <= 0:
-            if now - self._last_salvo_at > self.SALVO_COOLDOWN_S:
-                self._salvo_remaining = self.SALVO_COUNT
+            if now - self._last_salvo_at > self.profile.salvo_cooldown_s:
+                self._salvo_remaining = self.profile.salvo_count
                 self._salvo_target_track = track.track_id
             else:
                 return
@@ -120,11 +109,9 @@ class CorvetteAI:
                     thrust_g=min(ship.drive.crew_safe_g, ship.drive.max_thrust_g),
                 )
                 return
-        # Fallback: just cut drive
         ship.cmd_thrust_g = 0.0
 
 
-# ----------------------------------------------------------------------
 def _find(world, ship_id: int) -> Ship | None:
     for s in world.ships:
         if s.id == ship_id:

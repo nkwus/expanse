@@ -1,0 +1,48 @@
+# AI behavior profiles.
+#
+# Each [profiles.NAME] block defines tunable parameters for a CorvetteAI
+# personality. Scenarios reference profiles by name:
+#
+#     profiles = load_profiles()
+#     world.ais.append(CorvetteAI(ship_id=2, profile=profiles["aggressor"]))
+#
+# Fields:
+#   burn_g             Thrust (in g) used during intercept burn.
+#   salvo_range_m      Range (metres) at which the AI enters FIGHT and salvos.
+#   salvo_count        Torpedoes per salvo.
+#   salvo_cooldown_s   Sim-seconds between salvos.
+#   retreat_hull_frac  Hull fraction below which the AI flip-and-burns away.
+#                      Set to 0.0 to disable retreat.
+#   pdc_mode           PDC mode set on every tick: HOLD / AUTO_DEFEND / MANUAL.
+
+[profiles.default]
+burn_g = 2.0
+salvo_range_m = 600_000
+salvo_count = 2
+salvo_cooldown_s = 35.0
+retreat_hull_frac = 0.30
+pdc_mode = "AUTO_DEFEND"
+
+[profiles.aggressor]
+burn_g = 3.0
+salvo_range_m = 800_000
+salvo_count = 3
+salvo_cooldown_s = 25.0
+retreat_hull_frac = 0.20
+pdc_mode = "AUTO_DEFEND"
+
+[profiles.cagey]
+burn_g = 1.5
+salvo_range_m = 400_000
+salvo_count = 2
+salvo_cooldown_s = 45.0
+retreat_hull_frac = 0.50
+pdc_mode = "AUTO_DEFEND"
+
+[profiles.suicidal]
+burn_g = 4.0
+salvo_range_m = 300_000
+salvo_count = 4
+salvo_cooldown_s = 20.0
+retreat_hull_frac = 0.0
+pdc_mode = "AUTO_DEFEND"

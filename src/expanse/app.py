@@ -43,6 +43,9 @@ class App:
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_F1:
                     self.show_help = not self.show_help
                     continue
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_c:
+                    self.renderer.scope.center_on_ownship()
+                    continue
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     scope = self.renderer.scope
                     if scope.rect.collidepoint(event.pos):
@@ -63,6 +66,13 @@ class App:
                 self.renderer.scope.zoom_by(0.98)
             if keys[pygame.K_RIGHTBRACKET]:
                 self.renderer.scope.zoom_by(1.02)
+            # WASD pan — scale by zoom so visual speed is constant.
+            scope = self.renderer.scope
+            pan_m = 400.0 / scope.scale_px_per_m * real_dt
+            if keys[pygame.K_w]: scope.pan_by(0.0, pan_m)
+            if keys[pygame.K_s]: scope.pan_by(0.0, -pan_m)
+            if keys[pygame.K_a]: scope.pan_by(-pan_m, 0.0)
+            if keys[pygame.K_d]: scope.pan_by(pan_m, 0.0)
             # Advance sim
             ticks = self.clock.advance(real_dt)
             for _ in range(ticks):

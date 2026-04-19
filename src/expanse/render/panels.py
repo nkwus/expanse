@@ -18,7 +18,7 @@ def draw_top_bar(surface, rect, font, sim_time, multiplier_label, real_time):
 def draw_command_bar(surface, rect, font, prompt=None, cursor_world=None):
     pygame.draw.rect(surface, T.PANEL_BG, rect)
     pygame.draw.rect(surface, T.PANEL_BORDER, rect, 1)
-    text = prompt or "[Space] Pause  [1-4] Speed  [H] Hdg  [T] Thrust  [C] Cut  [B] Burn  [F] Fire  [P] PDC  [F1] Help"
+    text = prompt or "[Space] Pause  [1-4] Speed  [H] Hdg  [T] Thrust  [X] Cut  [B] Burn  [F] Fire  [P] PDC  [WASD] Pan  [C] Ctr  [F1] Help"
     draw.draw_text(surface, font, text, (rect.x + 12, rect.centery), T.TEXT, align="ml")
     if cursor_world is not None:
         label = f"{cursor_world.x / 1000:+.1f} km  {cursor_world.y / 1000:+.1f} km"

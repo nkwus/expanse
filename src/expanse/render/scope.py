@@ -31,6 +31,13 @@ class ScopeView:
     def zoom_by(self, factor: float) -> None:
         self.scale_px_per_m = max(1e-9, min(1.0, self.scale_px_per_m * factor))
 
+    def pan_by(self, dx_m: float, dy_m: float) -> None:
+        self.follow_ownship = False
+        self.center_world = Vec2(self.center_world.x + dx_m, self.center_world.y + dy_m)
+
+    def center_on_ownship(self) -> None:
+        self.follow_ownship = True
+
 
 def draw_scope(surface, scope: ScopeView, world, font) -> None:
     pygame.draw.rect(surface, T.BG, scope.rect)

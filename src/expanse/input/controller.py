@@ -21,7 +21,7 @@ class Controller:
     """Keyboard/mouse -> time controls + ownship commands.
 
     M2 scope: SET_HEADING (H then scope-click), SET_THRUST (T + digit),
-    CUT_DRIVE (C), FLIP_AND_BURN (B), thrust +/- (`+`/`-`).
+    CUT_DRIVE (X), FLIP_AND_BURN (B), thrust +/- (`+`/`-`).
     """
 
     def __init__(self, clock: GameClock, world: World) -> None:
@@ -89,7 +89,7 @@ class Controller:
         if k == pygame.K_t:
             self.mode = InputMode.THRUST_ENTRY
             return True
-        if k == pygame.K_c:
+        if k == pygame.K_x:
             ship.cmd_thrust_g = 0.0
             ship.autopilot = None
             self._flash("drive cut")

@@ -76,7 +76,7 @@ class Renderer:
             "  H        heading (then click scope to aim)",
             "  T 0-9    thrust in g (clamped by crew tolerance)",
             "  + / -    nudge thrust by 1 g",
-            "  C        cut drive",
+            "  X        cut drive",
             "  B        flip-and-burn to zero velocity",
             "",
             "WEAPONS",
@@ -85,6 +85,7 @@ class Renderer:
             "",
             "SCOPE",
             "  wheel    zoom            [ / ]   slow zoom",
+            "  WASD     pan             C       center on ownship",
             "",
             "F1 to close",
         ]

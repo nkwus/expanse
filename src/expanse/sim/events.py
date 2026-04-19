@@ -9,6 +9,7 @@ class SimEvent(Enum):
     TORPEDO_LAUNCHED = auto()
     TORPEDO_INBOUND = auto()
     TORPEDO_DETONATED = auto()
+    PDC_FIRED = auto()
     SHIP_DESTROYED = auto()
     SCENARIO_END = auto()
 

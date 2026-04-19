@@ -412,6 +412,11 @@ class World:
                         {"torp_id": threat.id, "shooter_id": ship.id, "reason": "pdc"},
                     )
                 pdc.cooldown_remaining_s = pdc.burst_cooldown_s
+                self.emit(
+                    SimEvent.PDC_FIRED,
+                    f"{ship.name} PDC #{pdc.id} burst",
+                    {"shooter_id": ship.id, "pdc_id": pdc.id, "target_torp_id": threat.id},
+                )
                 break  # one PDC fires per tick per ship; others stay warm
 
     def _select_pdc_threat(self, ship: Ship) -> Torpedo | None:

@@ -7,6 +7,7 @@ from .render.theme import load_theme
 from .render.renderer import Renderer
 from .input.controller import Controller
 from .scenarios import first_contact
+from .audio import AudioEngine
 
 
 class App:
@@ -19,6 +20,7 @@ class App:
         self.world = first_contact.build()
         self.renderer = Renderer(self.surface, self.theme)
         self.controller = Controller(self.clock, self.world)
+        self.audio = AudioEngine()
         self.pg_clock = pygame.time.Clock()
         self.running = False
         self.show_help = False
@@ -65,6 +67,7 @@ class App:
             ticks = self.clock.advance(real_dt)
             for _ in range(ticks):
                 self.world.step(SIM_DT)
+            self.audio.tick(self.world)
             # Cursor in world coords (only if over scope)
             cursor_world = None
             if self.renderer.scope.rect.collidepoint(mouse_pos):
@@ -77,6 +80,7 @@ class App:
                 show_help=self.show_help,
             )
             pygame.display.flip()
+        self.audio.shutdown()
         pygame.quit()
 
 

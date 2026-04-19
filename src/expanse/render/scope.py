@@ -140,13 +140,16 @@ def _draw_track(surface, scope, track, now: float, font):
 
 
 def _draw_predicted_track(surface, scope, track, dt_since, color):
-    horizon_s = 300.0  # 5 minutes
+    # Constant-velocity projection: accel excluded so the tail doesn't wibble.
+    # est_accel is sensor-differentiated noise amplified by t^2 over 5 min.
+    horizon_s = 300.0
     steps = 12
-    prev_world = track.predict_pos(dt_since)
-    prev = scope.world_to_screen(prev_world)
+    cur_pos = track.predict_pos(dt_since)
+    v = track.last_seen_vel
+    prev = scope.world_to_screen(cur_pos)
     for i in range(1, steps + 1):
-        t = dt_since + horizon_s * (i / steps)
-        nxt_world = track.predict_pos(t)
+        t = horizon_s * (i / steps)
+        nxt_world = Vec2(cur_pos.x + v.x * t, cur_pos.y + v.y * t)
         nxt = scope.world_to_screen(nxt_world)
         if i % 2 == 1:  # dashed
             pygame.draw.aaline(surface, T.TRACK_PREDICTED, prev, nxt)

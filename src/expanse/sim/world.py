@@ -10,6 +10,7 @@ from .events import Event, SimEvent
 from .weapons import Torpedo, PDCMode
 from .guidance import torpedo_aim_heading
 from .damage import apply_damage
+from .celestial import SolarSystem
 from ..config import G0
 from ..util.ids import IdGen
 from ..util.rng import Rng
@@ -21,7 +22,7 @@ TORP_ENTITY_OFFSET = 100_000
 class World:
     SENSOR_PERIOD_TICKS = 4  # 20 Hz sim / 4 = 5 Hz sensor update
 
-    def __init__(self, seed: int = 0) -> None:
+    def __init__(self, seed: int = 0, solar_system: SolarSystem | None = None) -> None:
         self.ships: list[Ship] = []
         self.torpedoes: list[Torpedo] = []
         self.now_sim: float = 0.0
@@ -35,6 +36,12 @@ class World:
         self._stalemate_ballistic_since: float | None = None
         self._sides_seen: set[Side] = set()
         self._torp_seekers: dict[int, ContactTrack] = {}
+        self.solar_system: SolarSystem | None = solar_system
+
+    def gravity_at(self, pos: Vec2) -> Vec2:
+        if self.solar_system is None:
+            return Vec2(0.0, 0.0)
+        return self.solar_system.gravity_at(pos)
 
     # ------------------------------------------------------------------
     # Public API
@@ -129,7 +136,8 @@ class World:
                     ship.max_rot_rate, ship.max_rot_accel, dt,
                 )
             thrust_a = ship.drive.current_g * G0
-            accel = Vec2.from_angle(ship.heading, thrust_a) if thrust_a > 0 else Vec2(0.0, 0.0)
+            thrust_accel = Vec2.from_angle(ship.heading, thrust_a) if thrust_a > 0 else Vec2(0.0, 0.0)
+            accel = thrust_accel + self.gravity_at(ship.pos)
             ship.pos, ship.vel = step_kinematics(ship.pos, ship.vel, accel, dt)
             if ship.magazine is not None:
                 ship.magazine.tick(dt)
@@ -185,9 +193,10 @@ class World:
             if torp.fuel_s > 0.0:
                 torp.fuel_s = max(0.0, torp.fuel_s - dt)
                 thrust_a = torp.thrust_g * G0
-                accel = Vec2.from_angle(torp.heading, thrust_a)
+                thrust_accel = Vec2.from_angle(torp.heading, thrust_a)
             else:
-                accel = Vec2(0.0, 0.0)
+                thrust_accel = Vec2(0.0, 0.0)
+            accel = thrust_accel + self.gravity_at(torp.pos)
             pre_pos = torp.pos
             torp.pos, torp.vel = step_kinematics(torp.pos, torp.vel, accel, dt)
 

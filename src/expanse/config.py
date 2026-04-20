@@ -3,6 +3,10 @@ from __future__ import annotations
 G0 = 9.80665
 KM = 1000.0
 
+G_NEWTON = 6.67430e-11
+AU = 1.495978707e11
+MU_SUN = 1.32712440018e20
+
 SIM_DT = 0.05
 MAX_TICKS_PER_FRAME = 2000
 
